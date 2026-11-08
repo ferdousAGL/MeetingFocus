@@ -1,0 +1,467 @@
+name: Build MeetingFocus APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Generate Android Project Files
+        run: |
+          mkdir -p app/src/main/java/com/personal/meetingfocus
+          mkdir -p app/src/main/res/layout
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/xml
+
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "MeetingFocus"
+          include(":app")
+          EOF
+
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.5.0" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          EOF
+
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          android.nonTransitiveRClass=true
+          EOF
+
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.personal.meetingfocus"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.personal.meetingfocus"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+          dependencies {
+              implementation("androidx.core:core-ktx:1.13.1")
+              implementation("androidx.appcompat:appcompat:1.7.0")
+              implementation("com.google.android.material:material:1.12.0")
+              implementation("androidx.recyclerview:recyclerview:1.3.2")
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.personal.meetingfocus">
+              <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+              <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <application
+                  android:allowBackup="true"
+                  android:label="Meeting Focus"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.MaterialComponents.DayNight.DarkActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+                  <service
+                      android:name=".FocusNotificationService"
+                      android:label="Meeting Focus Notification Blocker"
+                      android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.service.notification.NotificationListenerService" />
+                      </intent-filter>
+                  </service>
+                  <service
+                      android:name=".FocusVpnService"
+                      android:permission="android.permission.BIND_VPN_SERVICE"
+                      android:exported="false">
+                      <intent-filter>
+                          <action android:name="android.net.VpnService" />
+                      </intent-filter>
+                  </service>
+                  <service
+                      android:name=".AppFreezeAccessibilityService"
+                      android:label="Meeting Focus App Freezer"
+                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService" />
+                      </intent-filter>
+                      <meta-data
+                          android:name="android.accessibilityservice"
+                          android:resource="@xml/accessibility_service_config" />
+                  </service>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > app/src/main/res/xml/accessibility_service_config.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeWindowStateChanged"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagDefault"
+              android:canRetrieveWindowContent="true"
+              android:description="@string/accessibility_service_description"
+              android:notificationTimeout="100" />
+          EOF
+
+          cat << 'EOF' > app/src/main/res/values/strings.xml
+          <resources>
+              <string name="app_name">Meeting Focus</string>
+              <string name="accessibility_service_description">মিটিং চলাকালীন নির্বাচিত অ্যাপগুলো ব্যাকগ্রাউন্ডে ফ্রিজ (Force Stop) রাখতে সাহায্য করে।</string>
+          </resources>
+          EOF
+
+          cat << 'EOF' > app/src/main/res/layout/activity_main.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical"
+              android:padding="16dp">
+              <TextView
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:text="মিটিং ফোকাস কন্ট্রোল প্যানেল"
+                  android:textSize="20sp"
+                  android:textStyle="bold"
+                  android:paddingBottom="8dp" />
+              <com.google.android.material.switchmaterial.SwitchMaterial
+                  android:id="@+id/switchMeetingMode"
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:text="মিটিং মোড চালু করুন (সাইলেন্ট + ডেটা ব্লক)"
+                  android:textSize="16sp"
+                  android:paddingVertical="8dp" />
+              <LinearLayout
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:orientation="horizontal"
+                  android:weightSum="2">
+                  <Button
+                      android:id="@+id/btnNotificationPerm"
+                      android:layout_width="0dp"
+                      android:layout_height="wrap_content"
+                      android:layout_weight="1"
+                      android:layout_marginEnd="4dp"
+                      android:text="নোটিফিকেশন পারমিশন" />
+                  <Button
+                      android:id="@+id/btnAccessibilityPerm"
+                      android:layout_width="0dp"
+                      android:layout_height="wrap_content"
+                      android:layout_weight="1"
+                      android:layout_marginStart="4dp"
+                      android:text="ফ্রিজ পারমিশন" />
+              </LinearLayout>
+              <TextView
+                  android:layout_width="match_parent"
+                  android:layout_height="wrap_content"
+                  android:text="যে অ্যাপগুলো সচল (Whitelisted) রাখতে চান সেগুলোতে টিক দিন। বাকি সব অ্যাপ সাইলেন্ট ও অফলাইন থাকবে:"
+                  android:paddingTop="12dp"
+                  android:paddingBottom="8dp" />
+              <androidx.recyclerview.widget.RecyclerView
+                  android:id="@+id/recyclerApps"
+                  android:layout_width="match_parent"
+                  android:layout_height="0dp"
+                  android:layout_weight="1" />
+          </LinearLayout>
+          EOF
+
+          cat << 'EOF' > app/src/main/res/layout/item_app_rule.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:orientation="horizontal"
+              android:gravity="center_vertical"
+              android:paddingVertical="8dp"
+              android:paddingHorizontal="4dp">
+              <LinearLayout
+                  android:layout_width="0dp"
+                  android:layout_height="wrap_content"
+                  android:layout_weight="1"
+                  android:orientation="vertical">
+                  <TextView
+                      android:id="@+id/txtAppName"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:textSize="16sp"
+                      android:textStyle="bold" />
+                  <TextView
+                      android:id="@+id/txtPackageName"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:textSize="12sp"
+                      android:textColor="#666666" />
+              </LinearLayout>
+              <CheckBox
+                  android:id="@+id/chkAllowApp"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="সচল রাখুন" />
+              <Button
+                  android:id="@+id/btnFreezeApp"
+                  style="@style/Widget.MaterialComponents.Button.TextButton"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content"
+                  android:text="ফ্রিজ" />
+          </LinearLayout>
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/personal/meetingfocus/PrefsManager.kt
+          package com.personal.meetingfocus
+          import android.content.Context
+          object PrefsManager {
+              private const val PREFS_NAME = "meeting_focus_prefs"
+              private const val KEY_MEETING_ACTIVE = "meeting_active"
+              private const val KEY_ALLOWED_PACKAGES = "allowed_packages"
+              private const val KEY_PENDING_FREEZE_PKG = "pending_freeze_pkg"
+              private val DEFAULT_ALLOWED = setOf("com.whatsapp", "com.whatsapp.w4b", "com.google.android.apps.messaging", "com.android.mms")
+              fun isMeetingModeActive(context: Context): Boolean =
+                  context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(KEY_MEETING_ACTIVE, false)
+              fun setMeetingModeActive(context: Context, active: Boolean) =
+                  context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putBoolean(KEY_MEETING_ACTIVE, active).apply()
+              fun getAllowedPackages(context: Context): Set<String> =
+                  context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getStringSet(KEY_ALLOWED_PACKAGES, DEFAULT_ALLOWED) ?: DEFAULT_ALLOWED
+              fun togglePackageAllowed(context: Context, packageName: String, allowed: Boolean) {
+                  val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                  val current = getAllowedPackages(context).toMutableSet()
+                  if (allowed) current.add(packageName) else current.remove(packageName)
+                  prefs.edit().putStringSet(KEY_ALLOWED_PACKAGES, current).apply()
+              }
+              fun setPendingFreezePackage(context: Context, packageName: String?) =
+                  context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(KEY_PENDING_FREEZE_PKG, packageName).apply()
+              fun getPendingFreezePackage(context: Context): String? =
+                  context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_PENDING_FREEZE_PKG, null)
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/personal/meetingfocus/FocusNotificationService.kt
+          package com.personal.meetingfocus
+          import android.service.notification.NotificationListenerService
+          import android.service.notification.StatusBarNotification
+          class FocusNotificationService : NotificationListenerService() {
+              override fun onNotificationPosted(sbn: StatusBarNotification?) {
+                  super.onNotificationPosted(sbn)
+                  if (sbn == null || !PrefsManager.isMeetingModeActive(this)) return
+                  val allowedApps = PrefsManager.getAllowedPackages(this)
+                  val pkg = sbn.packageName
+                  if (pkg == packageName || allowedApps.contains(pkg)) return
+                  if (sbn.isClearable) cancelNotification(sbn.key)
+                  else snoozeNotification(sbn.key, 60 * 60 * 1000L)
+              }
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/personal/meetingfocus/FocusVpnService.kt
+          package com.personal.meetingfocus
+          import android.content.Intent
+          import android.net.VpnService
+          import android.os.ParcelFileDescriptor
+          class FocusVpnService : VpnService() {
+              private var vpnInterface: ParcelFileDescriptor? = null
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  if (intent?.action == ACTION_STOP_VPN) {
+                      stopVpn()
+                      stopSelf()
+                      return START_NOT_STICKY
+                  }
+                  startVpn()
+                  return START_STICKY
+              }
+              private fun startVpn() {
+                  stopVpn()
+                  val builder = Builder().setSession("MeetingFocusFirewall").addAddress("10.0.0.2", 32).addRoute("0.0.0.0", 0).addRoute("::", 0)
+                  for (pkg in PrefsManager.getAllowedPackages(this)) {
+                      try { builder.addDisallowedApplication(pkg) } catch (_: Exception) {}
+                  }
+                  vpnInterface = builder.establish()
+              }
+              private fun stopVpn() {
+                  try { vpnInterface?.close() } catch (_: Exception) {}
+                  vpnInterface = null
+              }
+              override fun onDestroy() { stopVpn(); super.onDestroy() }
+              companion object { const val ACTION_STOP_VPN = "com.personal.meetingfocus.STOP_VPN" }
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/personal/meetingfocus/AppFreezeAccessibilityService.kt
+          package com.personal.meetingfocus
+          import android.accessibilityservice.AccessibilityService
+          import android.view.accessibility.AccessibilityEvent
+          import android.view.accessibility.AccessibilityNodeInfo
+          class AppFreezeAccessibilityService : AccessibilityService() {
+              override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+                  val pendingPkg = PrefsManager.getPendingFreezePackage(this) ?: return
+                  val rootNode = rootInActiveWindow ?: return
+                  if (clickNodeByText(rootNode, listOf("Force stop", "FORCE STOP", "Force Stop", "ফোর্স স্টপ"))) return
+                  if (clickNodeByText(rootNode, listOf("OK", "Ok", "ঠিক আছে")) && pendingPkg.isNotEmpty()) {
+                      PrefsManager.setPendingFreezePackage(this, null)
+                      performGlobalAction(GLOBAL_ACTION_BACK)
+                  }
+              }
+              private fun clickNodeByText(root: AccessibilityNodeInfo, labels: List<String>): Boolean {
+                  for (label in labels) {
+                      for (node in root.findAccessibilityNodeInfosByText(label)) {
+                          if (node.isClickable && node.isEnabled) { node.performAction(AccessibilityNodeInfo.ACTION_CLICK); return true }
+                          val parent = node.parent
+                          if (parent != null && parent.isClickable && parent.isEnabled) { parent.performAction(AccessibilityNodeInfo.ACTION_CLICK); return true }
+                      }
+                  }
+                  return false
+              }
+              override fun onInterrupt() {}
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/personal/meetingfocus/MainActivity.kt
+          package com.personal.meetingfocus
+          import android.content.Intent
+          import android.content.pm.ApplicationInfo
+          import android.net.Uri
+          import android.net.VpnService
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.view.LayoutInflater
+          import android.view.View
+          import android.view.ViewGroup
+          import android.widget.Button
+          import android.widget.CheckBox
+          import android.widget.TextView
+          import androidx.appcompat.app.AppCompatActivity
+          import androidx.recyclerview.widget.LinearLayoutManager
+          import androidx.recyclerview.widget.RecyclerView
+          import com.google.android.material.switchmaterial.SwitchMaterial
+          data class AppEntry(val appName: String, val packageName: String, var isAllowed: Boolean)
+          class MainActivity : AppCompatActivity() {
+              private lateinit var switchMeetingMode: SwitchMaterial
+              private lateinit var recyclerApps: RecyclerView
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+                  switchMeetingMode = findViewById(R.id.switchMeetingMode)
+                  recyclerApps = findViewById(R.id.recyclerApps)
+                  findViewById<Button>(R.id.btnNotificationPerm).setOnClickListener { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+                  findViewById<Button>(R.id.btnAccessibilityPerm).setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+                  switchMeetingMode.isChecked = PrefsManager.isMeetingModeActive(this)
+                  switchMeetingMode.setOnCheckedChangeListener { _, isChecked ->
+                      PrefsManager.setMeetingModeActive(this, isChecked)
+                      if (isChecked) startFirewallVpn() else stopFirewallVpn()
+                  }
+                  loadInstalledApps()
+              }
+              private fun startFirewallVpn() {
+                  val vpnIntent = VpnService.prepare(this)
+                  if (vpnIntent != null) startActivityForResult(vpnIntent, 1001)
+                  else startService(Intent(this, FocusVpnService::class.java))
+              }
+              private fun stopFirewallVpn() {
+                  startService(Intent(this, FocusVpnService::class.java).apply { action = FocusVpnService.ACTION_STOP_VPN })
+              }
+              override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+                  super.onActivityResult(requestCode, resultCode, data)
+                  if (requestCode == 1001 && resultCode == RESULT_OK) startService(Intent(this, FocusVpnService::class.java))
+              }
+              private fun loadInstalledApps() {
+                  val pm = packageManager
+                  val allowedSet = PrefsManager.getAllowedPackages(this)
+                  val installed = pm.getInstalledApplications(0)
+                      .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || allowedSet.contains(it.packageName) }
+                      .filter { it.packageName != packageName }
+                      .map { AppEntry(pm.getApplicationLabel(it).toString(), it.packageName, allowedSet.contains(it.packageName)) }
+                      .sortedWith(compareByDescending<AppEntry> { it.isAllowed }.thenBy { it.appName })
+                  recyclerApps.layoutManager = LinearLayoutManager(this)
+                  recyclerApps.adapter = AppAdapter(installed)
+              }
+              inner class AppAdapter(private val items: List<AppEntry>) : RecyclerView.Adapter<AppAdapter.ViewHolder>() {
+                  inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+                      val txtAppName: TextView = view.findViewById(R.id.txtAppName)
+                      val txtPackageName: TextView = view.findViewById(R.id.txtPackageName)
+                      val chkAllowApp: CheckBox = view.findViewById(R.id.chkAllowApp)
+                      val btnFreezeApp: Button = view.findViewById(R.id.btnFreezeApp)
+                  }
+                  override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder =
+                      ViewHolder(LayoutInflater.from(parent.context).inflate(R.layout.item_app_rule, parent, false))
+                  override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+                      val item = items[position]
+                      holder.txtAppName.text = item.appName
+                      holder.txtPackageName.text = item.packageName
+                      holder.chkAllowApp.setOnCheckedChangeListener(null)
+                      holder.chkAllowApp.isChecked = item.isAllowed
+                      holder.chkAllowApp.setOnCheckedChangeListener { _, isChecked ->
+                          item.isAllowed = isChecked
+                          PrefsManager.togglePackageAllowed(this@MainActivity, item.packageName, isChecked)
+                          if (PrefsManager.isMeetingModeActive(this@MainActivity)) startFirewallVpn()
+                      }
+                      holder.btnFreezeApp.setOnClickListener {
+                          PrefsManager.setPendingFreezePackage(this@MainActivity, item.packageName)
+                          startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply { data = Uri.fromParts("package", item.packageName, null) })
+                      }
+                  }
+                  override fun getItemCount(): Int = items.size
+              }
+          }
+          EOF
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Build Debug APK
+        run: gradle assembleDebug --no-daemon
+
+      - name: Upload Compiled APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MeetingFocus-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
