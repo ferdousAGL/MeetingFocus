@@ -13,8 +13,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Generate Android Project Files (v2.0)
-        run: |
-                    cat << 'PYEOF' > /tmp/v3_upgrade.py
+              run: |
+                    cat << YEOF' > /tmp/v3_upgrade.py
           import os, shutil, math, struct, zlib
 
           S = "ht" + "tp://schemas.android.com/apk/res/android"
