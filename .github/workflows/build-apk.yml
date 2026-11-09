@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-b uild:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -1545,5 +1545,5 @@ b uild:
       - name: Upload Compiled APK
         uses: actions/upload-artifact@v4
         with:
-          name: MeetingFocus-Por-3-APK
+          name: MeetingFocus-Pro-v3-APK
           path: app/build/outputs/apk/debug/app-debug.apk
