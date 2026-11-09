@@ -12,8 +12,8 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-          - name: Generate Android Project Files (v2.0)
-                run: |
+        - name: Generate Android Project Files (v2.0)
+                n: |
                     cat << YEOF' > /tmp/v3_upgrade.py
           import os, shutil, math, struct, zlib
 
