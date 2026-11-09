@@ -14,7 +14,550 @@ jobs:
 
       - name: Generate Android Project Files (v2.0)
         run: |
-          mkdir -p app/src/main/java/com/personal/meetingfocus
+                    cat << 'PYEOF' > /tmp/v3_upgrade.py
+          import os, shutil, math, struct, zlib
+
+          S = "ht" + "tp://schemas.android.com/apk/res/android"
+          A = "ht" + "tp://schemas.android.com/aapt"
+
+          for d in ["mipmap-mdpi", "mipmap-hdpi", "mipmap-xhdpi", "mipmap-xxhdpi", "mipmap-xxxhdpi", "mipmap-anydpi-v26"]:
+              shutil.rmtree(f"app/src/main/res/{d}", ignore_errors=True)
+              os.makedirs(f"app/src/main/res/{d}", exist_ok=True)
+          for fn in ["app_logo.png", "app_logo.xml", "ic_launcher_foreground.xml", "ic_launcher_background.xml"]:
+              p = f"app/src/main/res/drawable/{fn}"
+              if os.path.exists(p): os.remove(p)
+          for kt in ["PrefsManager.kt", "FocusNotificationService.kt", "FocusVpnService.kt", "AppFreezeAccessibilityService.kt"]:
+              p = f"app/src/main/java/com/personal/meetingfocus/{kt}"
+              if os.path.exists(p): os.remove(p)
+
+          Q = "M 95,21 L 105,8 L 105,69 L 113.5,65 L 100,88 L 86.5,65 L 95,69 L 95,38.2 A 62,62 0 0,0 38.5,92 L 28.4,92 A 72,72 0 0,1 95,28.2 Z"
+          grp = [f'<group android:pivotX="100" android:pivotY="100" android:rotation="{r}"><path android:pathData="{Q}"><aapt:attr name="android:fillColor"><gradient android:startX="30" android:startY="24" android:endX="105" android:endY="88" android:type="linear"><item android:offset="0.0" android:color="{c1}"/><item android:offset="1.0" android:color="{c2}"/></gradient></aapt:attr></path></group>' for r, c1, c2 in [(0,"#0026CA","#0060F0"),(90,"#00E0FF","#0072FF"),(180,"#0026CA","#0060F0"),(270,"#00E0FF","#0072FF")]]
+          grp.append('<path android:pathData="M 100,94.5 A 5.5,5.5 0 1,1 99.99,94.5 Z" android:fillColor="#0048E8"/>')
+          G = "\n".join(grp)
+
+          open("app/src/main/res/drawable/app_logo.xml", "w").write(f'<?xml version="1.0" encoding="utf-8"?><vector xmlns:android="{S}" xmlns:aapt="{A}" android:width="200dp" android:height="200dp" android:viewportWidth="200" android:viewportHeight="200"><path android:pathData="M 36,0 L 164,0 A 36,36 0 0,1 200,36 L 200,164 A 36,36 0 0,1 164,200 L 36,200 A 36,36 0 0,1 0,164 L 0,36 A 36,36 0 0,1 36,0 Z" android:fillColor="#F8FAFC"/>{G}</vector>')
+          open("app/src/main/res/drawable/ic_launcher_foreground.xml", "w").write(f'<?xml version="1.0" encoding="utf-8"?><vector xmlns:android="{S}" xmlns:aapt="{A}" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><group android:translateX="18" android:translateY="18" android:scaleX="0.36" android:scaleY="0.36">{G}</group></vector>')
+          open("app/src/main/res/drawable/ic_launcher_background.xml", "w").write(f'<?xml version="1.0" encoding="utf-8"?><vector xmlns:android="{S}" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:pathData="M0,0h108v108h-108z" android:fillColor="#F8FAFC"/></vector>')
+          adap = f'<?xml version="1.0" encoding="utf-8"?><adaptive-icon xmlns:android="{S}"><background android:drawable="@drawable/ic_launcher_background"/><foreground android:drawable="@drawable/ic_launcher_foreground"/></adaptive-icon>'
+          open("app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml", "w").write(adap)
+          open("app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml", "w").write(adap)
+
+          def make_png(path, sz, rnd):
+              raw = bytearray(); sc = 200.0 / sz
+              for py in range(sz):
+                  raw.append(0); y0 = (py + 0.5) * sc - 100.0
+                  for px in range(sz):
+                      x0 = (px + 0.5) * sc - 100.0; r = math.hypot(x0, y0); ax, ay = abs(x0), abs(y0)
+                      if (rnd and r > 96.0) or (not rnd and (ax > 96.0 or ay > 96.0 or (ax > 64.0 and ay > 64.0 and math.hypot(ax-64.0, ay-64.0) > 32.0))): raw.extend((0,0,0,0)); continue
+                      if r <= 5.5: raw.extend((0,72,232,255)); continue
+                      hq = -1
+                      for q, (rx, ry) in enumerate([(x0,y0),(y0,-x0),(-x0,-y0),(-y0,x0)]):
+                          if ((62.0<=r<=72.0 and rx<=-5.0 and ry<=-8.0) or (-5.0<=rx<=5.0 and -92.0<=ry<=-31.0 and ry>=-79.0-(rx+5.0)*1.3) or (-35.0<=ry<=-12.0 and abs(rx)<=(-12.0-ry)*(13.5/23.0) and ry>=-31.0-abs(rx)*(4.0/13.5))): hq = q; break
+                      raw.extend((0,68,225,255) if hq in (0,2) else ((0,175,255,255) if hq in (1,3) else (248,250,252,255)))
+              def chk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t+d)&0xffffffff)
+              open(path, "wb").write(b"\x89PNG\r\n\x1a\n" + chk(b"IHDR", struct.pack(">IIBBBBB", sz, sz, 8, 6, 0, 0, 0)) + chk(b"IDAT", zlib.compress(bytes(raw), 9)) + chk(b"IEND", b""))
+
+          for d, sz in [("mipmap-mdpi",48),("mipmap-hdpi",72),("mipmap-xhdpi",96),("mipmap-xxhdpi",144),("mipmap-xxxhdpi",192)]:
+              make_png(f"app/src/main/res/{d}/ic_launcher.png", sz, False)
+              make_png(f"app/src/main/res/{d}/ic_launcher_round.png", sz, True)
+
+          open("app/src/main/AndroidManifest.xml", "w").write(f"""<?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="{S}" package="com.personal.meetingfocus">
+              <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+              <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+              <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+              <application android:allowBackup="true" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:label="Meeting Focus" android:supportsRtl="true" android:theme="@style/AppTheme">
+                  <activity android:name=".MainActivity" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:exported="true" android:windowSoftInputMode="stateHidden|adjustResize" />
+                  <activity-alias android:name=".MeetingFocusLauncher" android:targetActivity=".MainActivity" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:label="Meeting Focus" android:exported="true">
+                      <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+                  </activity-alias>
+                  <service android:name=".FocusNotificationService" android:label="Meeting Focus Notification Blocker" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true">
+                      <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
+                  </service>
+                  <service android:name=".FocusVpnService" android:permission="android.permission.BIND_VPN_SERVICE" android:exported="false">
+                      <intent-filter><action android:name="android.net.VpnService" /></intent-filter>
+                  </service>
+                  <service android:name=".AppFreezeAccessibilityService" android:label="Meeting Focus App Freezer" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">
+                      <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+                      <meta-data android:name="android.accessibilityservice" android:resource="@xml/accessibility_service_config" />
+                  </service>
+              </application>
+          </manifest>""")
+
+          open("app/src/main/java/com/personal/meetingfocus/MainActivity.kt", "w").write("""package com.personal.meetingfocus
+          import android.accessibilityservice.AccessibilityService
+          import android.app.ActivityManager
+          import android.content.Context
+          import android.content.Intent
+          import android.content.pm.ApplicationInfo
+          import android.graphics.Color
+          import android.graphics.drawable.Drawable
+          import android.graphics.drawable.GradientDrawable
+          import android.net.VpnService
+          import android.os.Bundle
+          import android.os.ParcelFileDescriptor
+          import android.provider.Settings
+          import android.service.notification.NotificationListenerService
+          import android.service.notification.StatusBarNotification
+          import android.text.Editable
+          import android.text.TextWatcher
+          import android.view.Gravity
+          import android.view.LayoutInflater
+          import android.view.View
+          import android.view.ViewGroup
+          import android.view.accessibility.AccessibilityEvent
+          import android.widget.*
+          import androidx.appcompat.app.AlertDialog
+          import androidx.appcompat.app.AppCompatActivity
+          import androidx.recyclerview.widget.LinearLayoutManager
+          import androidx.recyclerview.widget.RecyclerView
+          import com.google.android.material.switchmaterial.SwitchMaterial
+
+          object PrefsManager {
+              private const val P = "meeting_focus_v3_prefs"
+              const val MODE_ACTIVE = 0
+              const val MODE_NET_OFF = 1
+              const val MODE_FROZEN = 2
+
+              val ESSENTIAL = setOf(
+                  "com.whatsapp", "com.whatsapp.w4b", "com.google.android.apps.messaging",
+                  "com.android.mms", "com.android.contacts", "com.android.dialer",
+                  "com.google.android.dialer", "com.truecaller", "com.android.chrome",
+                  "com.sec.android.app.sbrowser", "org.mozilla.firefox", "com.opera.browser",
+                  "com.opera.mini.native", "com.brave.browser", "com.microsoft.emmx",
+                  "com.mi.globalbrowser", "com.android.browser", "com.google.android.googlequicksearchbox"
+              )
+              private val DEF_FROZEN = setOf(
+                  "com.facebook.orca", "com.facebook.katana", "com.facebook.lite",
+                  "com.instagram.android", "com.zhiliaoapp.musically", "com.ss.android.ugc.trill",
+                  "com.imo.android.imoim", "org.telegram.messenger", "com.snapchat.android", "com.google.android.youtube"
+              )
+
+              fun isMeetingActive(c: Context) = c.getSharedPreferences(P, 0).getBoolean("m_act", false)
+              fun setMeetingActive(c: Context, v: Boolean) = c.getSharedPreferences(P, 0).edit().putBoolean("m_act", v).apply()
+              fun isAutoSet(c: Context) = c.getSharedPreferences(P, 0).getBoolean("a_set", false)
+              fun setAutoSet(c: Context, v: Boolean) = c.getSharedPreferences(P, 0).edit().putBoolean("a_set", v).apply()
+              fun getNetOff(c: Context): Set<String> = c.getSharedPreferences(P, 0).getStringSet("net_off", emptySet()) ?: emptySet()
+              fun getFrozen(c: Context): Set<String> = c.getSharedPreferences(P, 0).getStringSet("frozen", DEF_FROZEN) ?: DEF_FROZEN
+
+              fun getMode(c: Context, pkg: String): Int = when {
+                  getFrozen(c).contains(pkg) -> MODE_FROZEN
+                  getNetOff(c).contains(pkg) -> MODE_NET_OFF
+                  else -> MODE_ACTIVE
+              }
+
+              fun setMode(c: Context, pkg: String, m: Int) {
+                  val no = getNetOff(c).toMutableSet(); val fr = getFrozen(c).toMutableSet()
+                  no.remove(pkg); fr.remove(pkg)
+                  if (m == MODE_NET_OFF) no.add(pkg)
+                  if (m == MODE_FROZEN) fr.add(pkg)
+                  c.getSharedPreferences(P, 0).edit().putStringSet("net_off", no).putStringSet("frozen", fr).apply()
+              }
+
+              fun setBulk(c: Context, no: Set<String>, fr: Set<String>) {
+                  c.getSharedPreferences(P, 0).edit().putStringSet("net_off", no).putStringSet("frozen", fr).apply()
+              }
+          }
+
+          class FocusNotificationService : NotificationListenerService() {
+              override fun onNotificationPosted(sbn: StatusBarNotification?) {
+                  if (sbn == null || !PrefsManager.isMeetingActive(this) || sbn.packageName == packageName) return
+                  if (PrefsManager.getMode(this, sbn.packageName) != PrefsManager.MODE_ACTIVE) {
+                      try {
+                          if (sbn.isClearable) cancelNotification(sbn.key)
+                          else snoozeNotification(sbn.key, 3600000L)
+                      } catch (_: Exception) {}
+                  }
+              }
+          }
+
+          class FocusVpnService : VpnService() {
+              private var vpn: ParcelFileDescriptor? = null
+              override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+                  if (intent?.action == "STOP_VPN" || !PrefsManager.isMeetingActive(this)) {
+                      stopVpn(); stopSelf(); return START_NOT_STICKY
+                  }
+                  stopVpn()
+                  val blk = (PrefsManager.getNetOff(this) + PrefsManager.getFrozen(this)).toMutableSet()
+                  blk.remove(packageName)
+                  if (blk.isEmpty()) { stopSelf(); return START_NOT_STICKY }
+                  try {
+                      val b = Builder().setSession("MeetingFocusV3").setMtu(1500)
+                          .addAddress("10.10.10.2", 32).addAddress("fd00:1:fd00:1:fd00:1:fd00:1", 128)
+                          .addRoute("0.0.0.0", 0).addRoute("::", 0).addDnsServer("10.10.10.1").setBlocking(false)
+                      var cnt = 0
+                      for (p in blk) { try { b.addAllowedApplication(p); cnt++ } catch (_: Exception) {} }
+                      if (cnt > 0) vpn = b.establish() else stopSelf()
+                  } catch (_: Exception) { stopSelf() }
+                  return START_STICKY
+              }
+              private fun stopVpn() { try { vpn?.close() } catch (_: Exception) {}; vpn = null }
+              override fun onDestroy() { stopVpn(); super.onDestroy() }
+          }
+
+          class AppFreezeAccessibilityService : AccessibilityService() {
+              private var lastT = 0L
+              override fun onAccessibilityEvent(e: AccessibilityEvent?) {
+                  if (e?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || !PrefsManager.isMeetingActive(this)) return
+                  val pkg = e.packageName?.toString() ?: return
+                  if (pkg == packageName || pkg == "com.android.systemui" || pkg.contains("launcher") || pkg.contains("miui.home")) return
+                  if (PrefsManager.getMode(this, pkg) == PrefsManager.MODE_FROZEN) {
+                      try { (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).killBackgroundProcesses(pkg) } catch (_: Exception) {}
+                      performGlobalAction(GLOBAL_ACTION_HOME)
+                      val now = System.currentTimeMillis()
+                      if (now - lastT > 2500L) {
+                          lastT = now
+                          Toast.makeText(this, "❄️ এই অ্যাপটি মিটিং মোডে সম্পূর্ণ অফ আছে। চালু করতে Meeting Focus থেকে [🟢 সচল] করুন।", Toast.LENGTH_LONG).show()
+                      }
+                  }
+              }
+              override fun onInterrupt() {}
+          }
+
+          data class AppEntry(val appName: String, val packageName: String, val icon: Drawable, var mode: Int)
+
+          class MainActivity : AppCompatActivity() {
+              private lateinit var switchMeetingMode: SwitchMaterial
+              private lateinit var txtStatusBadge: TextView
+              private lateinit var txtCountAllowed: TextView
+              private lateinit var txtCountOffline: TextView
+              private lateinit var txtCountFrozen: TextView
+              private lateinit var btnNotificationPerm: TextView
+              private lateinit var btnAccessibilityPerm: TextView
+              private lateinit var edtSearch: EditText
+              private lateinit var btnQuickPreset: TextView
+              private lateinit var tabAll: TextView
+              private lateinit var tabAllowed: TextView
+              private lateinit var tabOffline: TextView
+              private lateinit var tabFrozen: TextView
+              private lateinit var recyclerApps: RecyclerView
+              private lateinit var bannerInfo: LinearLayout
+              private lateinit var txtBannerMsg: TextView
+              private lateinit var txtTabHelper: TextView
+
+              private val allApps = mutableListOf<AppEntry>()
+              private val displayedApps = mutableListOf<AppEntry>()
+              private var currentFilter = 0
+              private var adapter: AppAdapter? = null
+              private var supSwitch = false
+
+              private fun dp(v: Float) = (v * resources.displayMetrics.density).toInt()
+              private fun bg(f: String, s: String, r: Float = 10f) = GradientDrawable().apply {
+                  setColor(Color.parseColor(f)); setStroke(dp(1.5f), Color.parseColor(s)); cornerRadius = dp(r).toFloat()
+              }
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+
+                  switchMeetingMode = findViewById(R.id.switchMeetingMode)
+                  txtStatusBadge = findViewById(R.id.txtStatusBadge)
+                  txtCountAllowed = findViewById(R.id.txtCountAllowed)
+                  txtCountOffline = findViewById(R.id.txtCountOffline)
+                  txtCountFrozen = findViewById(R.id.txtCountFrozen)
+                  btnNotificationPerm = findViewById(R.id.btnNotificationPerm)
+                  btnAccessibilityPerm = findViewById(R.id.btnAccessibilityPerm)
+                  edtSearch = findViewById(R.id.edtSearch)
+                  btnQuickPreset = findViewById(R.id.btnQuickPreset)
+                  tabAll = findViewById(R.id.tabAll)
+                  tabAllowed = findViewById(R.id.tabAllowed)
+                  tabOffline = findViewById(R.id.tabOffline)
+                  tabFrozen = findViewById(R.id.tabFrozen)
+                  recyclerApps = findViewById(R.id.recyclerApps)
+
+                  val root = recyclerApps.parent as LinearLayout
+                  val rIdx = root.indexOfChild(recyclerApps)
+
+                  bannerInfo = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                      background = bg("#0F2942", "#0284C7", 12f)
+                      setPadding(dp(10f), dp(8f), dp(10f), dp(8f)); visibility = View.GONE
+                      layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6f) }
+                  }
+                  txtBannerMsg = TextView(this).apply {
+                      setTextColor(Color.parseColor("#E0F2FE")); textSize = 11.5f
+                      layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+                  }
+                  val btnClose = TextView(this).apply {
+                      text = "✕"; setTextColor(Color.parseColor("#38BDF8")); textSize = 14f
+                      setPadding(dp(8f), dp(2f), dp(4f), dp(2f))
+                      setOnClickListener { bannerInfo.visibility = View.GONE }
+                  }
+                  bannerInfo.addView(txtBannerMsg); bannerInfo.addView(btnClose)
+
+                  txtTabHelper = TextView(this).apply {
+                      text = "💡 যেকোনো অ্যাপের নিচে [🟢 সচল], [🚫 নেট অফ] বা [❄️ সম্পূর্ণ অফ] সিলেক্ট করুন"
+                      setTextColor(Color.parseColor("#94A3B8")); textSize = 11f
+                      setPadding(dp(4f), dp(2f), dp(4f), dp(6f))
+                  }
+                  root.addView(bannerInfo, rIdx); root.addView(txtTabHelper, rIdx + 1)
+
+                  (txtCountAllowed.parent as? View)?.setOnClickListener { setFilterTab(1) }
+                  (txtCountOffline.parent as? View)?.setOnClickListener { setFilterTab(2) }
+                  (txtCountFrozen.parent as? View)?.setOnClickListener { setFilterTab(3) }
+
+                  btnNotificationPerm.setOnClickListener { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+                  btnAccessibilityPerm.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+
+                  val act = PrefsManager.isMeetingActive(this)
+                  switchMeetingMode.isChecked = act
+                  updateHero(act); updateAutoBtn(PrefsManager.isAutoSet(this))
+
+                  switchMeetingMode.setOnCheckedChangeListener { _, isChecked ->
+                      if (supSwitch) return@setOnCheckedChangeListener
+                      PrefsManager.setMeetingActive(this, isChecked)
+                      if (!isChecked) { PrefsManager.setAutoSet(this, false); updateAutoBtn(false) }
+                      updateHero(isChecked)
+                      if (isChecked) {
+                          killFrozen(); startVpn()
+                          showBanner("✅ মিটিং মোড চালু হয়েছে! যেসব অ্যাপ [🚫 নেট অফ] বা [❄️ সম্পূর্ণ অফ] আছে সেগুলোর ইন্টারনেট ও নোটিফিকেশন এখন বন্ধ।")
+                      } else {
+                          stopVpn()
+                          showBanner("⚪ মিটিং মোড বন্ধ করা হয়েছে। এখন আপনার ফোনের সব অ্যাপ স্বাভাবিকভাবে চলবে।")
+                      }
+                  }
+
+                  btnQuickPreset.setOnClickListener { toggleAutoSet() }
+                  edtSearch.addTextChangedListener(object : TextWatcher {
+                      override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                      override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) { filterApps() }
+                      override fun afterTextChanged(s: Editable?) {}
+                  })
+
+                  tabAll.setOnClickListener { setFilterTab(0) }
+                  tabAllowed.setOnClickListener { setFilterTab(1) }
+                  tabOffline.setOnClickListener { setFilterTab(2) }
+                  tabFrozen.setOnClickListener { setFilterTab(3) }
+
+                  loadApps()
+                  if (act) { killFrozen(); startVpn() }
+              }
+
+              override fun onResume() { super.onResume(); updatePerms() }
+              private fun showBanner(m: String) { txtBannerMsg.text = m; bannerInfo.visibility = View.VISIBLE }
+
+              private fun updateAutoBtn(on: Boolean) {
+                  if (on) {
+                      btnQuickPreset.text = "✅ অটো সেট: চালু"
+                      btnQuickPreset.background = bg("#059669", "#6EE7B7", 12f)
+                      btnQuickPreset.setTextColor(Color.WHITE)
+                  } else {
+                      btnQuickPreset.text = "⚡ অটো সেট: অফ"
+                      btnQuickPreset.background = bg("#1E293B", "#475569", 12f)
+                      btnQuickPreset.setTextColor(Color.parseColor("#E2E8F0"))
+                  }
+              }
+
+              private fun updateHero(act: Boolean) {
+                  txtStatusBadge.text = if (act) "🟢 মিটিং মোড সচল (সচল অ্যাপ অনলাইন, বাকিগুলো ব্লকড)" else "⚪ স্ট্যান্ডবাই মোড (সব অ্যাপ স্বাভাবিক চলছে)"
+                  txtStatusBadge.setTextColor(Color.parseColor(if (act) "#34D399" else "#94A3B8"))
+              }
+
+              private fun updatePerms() {
+                  val nl = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: ""
+                  if (nl.contains(packageName)) {
+                      btnNotificationPerm.text = "✓ নোটিফিকেশন গার্ড অন"
+                      btnNotificationPerm.setBackgroundResource(R.drawable.bg_pill_allowed)
+                      btnNotificationPerm.setTextColor(Color.parseColor("#34D399"))
+                  } else {
+                      btnNotificationPerm.text = "⚠️ নোটিফিকেশন পারমিশন দিন"
+                      btnNotificationPerm.setBackgroundResource(R.drawable.bg_pill_offline)
+                      btnNotificationPerm.setTextColor(Color.parseColor("#FDA4AF"))
+                  }
+                  val ac = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
+                  if (ac.contains(packageName)) {
+                      btnAccessibilityPerm.text = "✓ ফ্রিজ গার্ড অন"
+                      btnAccessibilityPerm.setBackgroundResource(R.drawable.bg_pill_allowed)
+                      btnAccessibilityPerm.setTextColor(Color.parseColor("#34D399"))
+                  } else {
+                      btnAccessibilityPerm.text = "🛡️ ফ্রিজ গার্ড পারমিশন"
+                      btnAccessibilityPerm.setBackgroundResource(R.drawable.bg_pill_inactive)
+                      btnAccessibilityPerm.setTextColor(Color.parseColor("#E2E8F0"))
+                  }
+              }
+
+              private fun toggleAutoSet() {
+                  if (!PrefsManager.isAutoSet(this)) {
+                      val fr = mutableSetOf<String>(); val actNames = mutableListOf<String>()
+                      for (a in allApps) {
+                          if (PrefsManager.ESSENTIAL.contains(a.packageName)) {
+                              a.mode = PrefsManager.MODE_ACTIVE; actNames.add(a.appName)
+                          } else {
+                              a.mode = PrefsManager.MODE_FROZEN; fr.add(a.packageName)
+                          }
+                      }
+                      PrefsManager.setBulk(this, emptySet(), fr)
+                      PrefsManager.setAutoSet(this, true); PrefsManager.setMeetingActive(this, true)
+                      supSwitch = true; switchMeetingMode.isChecked = true; supSwitch = false
+                      updateAutoBtn(true); updateHero(true); updateCounters(); sortApps(); filterApps()
+                      killFrozen(); startVpn()
+                      val s = if (actNames.isEmpty()) "WhatsApp, Phone, SMS, Browser" else actNames.take(6).joinToString(", ")
+                      showBanner("✅ অটো সেট চালু: $s সচল আছে এবং বাকি ${fr.size}টি অ্যাপ ব্যাকগ্রাউন্ড ও নেট থেকে সম্পূর্ণ অফ করা হয়েছে।")
+                      AlertDialog.Builder(this)
+                          .setTitle("✅ অটো সেট চালু হয়েছে!")
+                          .setMessage("আপনার মিটিং ফোকাস স্বয়ংক্রিয়ভাবে সেট করা হয়েছে:\n\n🟢 সচল ও অনলাইন অ্যাপ (${actNames.size}টি):\n$s — এগুলোতে কল, মেসেজ ও নরমাল ব্রাউজিং ১০০% চালু থাকবে।\n\n❄️ সম্পূর্ণ অফ করা অ্যাপ (${fr.size}টি):\nবাকি সব অ্যাপের ইন্টারনেট, নোটিফিকেশন এবং ব্যাকগ্রাউন্ড প্রসেস সম্পূর্ণ বন্ধ করে দেওয়া হয়েছে।\n\n💡 যেকোনো অ্যাপের নিচে [🟢 সচল] বাটনে ট্যাপ করে সেটিকে অনলাইন করতে পারবেন।")
+                          .setPositiveButton("ঠিক আছে, বুঝেছি ✓", null).show()
+                  } else {
+                      PrefsManager.setAutoSet(this, false); PrefsManager.setMeetingActive(this, false)
+                      supSwitch = true; switchMeetingMode.isChecked = false; supSwitch = false
+                      updateAutoBtn(false); updateHero(false); stopVpn()
+                      showBanner("⚪ অটো সেট ও মিটিং মোড বন্ধ করা হয়েছে। এখন সব অ্যাপ স্বাভাবিকভাবে চলবে।")
+                      AlertDialog.Builder(this)
+                          .setTitle("⚪ অটো সেট বন্ধ করা হয়েছে")
+                          .setMessage("মিটিং মোড ও অটো সেট এখন বন্ধ। আপনার ফোনের সব অ্যাপের ইন্টারনেট ও নোটিফিকেশন স্বাভাবিক অবস্থায় ফিরে গেছে।")
+                          .setPositiveButton("ঠিক আছে ✓", null).show()
+                  }
+              }
+
+              private fun setFilterTab(idx: Int) {
+                  currentFilter = idx
+                  val tabs = listOf(tabAll, tabAllowed, tabOffline, tabFrozen)
+                  val bgs = listOf(R.drawable.bg_pill_frozen, R.drawable.bg_pill_allowed, R.drawable.bg_pill_offline, R.drawable.bg_pill_frozen)
+                  for (i in tabs.indices) {
+                      tabs[i].setBackgroundResource(if (i == idx) bgs[i] else R.drawable.bg_pill_inactive)
+                      tabs[i].setTextColor(if (i == idx) Color.WHITE else Color.parseColor("#94A3B8"))
+                  }
+                  txtTabHelper.text = when (idx) {
+                      1 -> "🟢 সচল তালিকা: এই অ্যাপগুলোর ইন্টারনেট, কল ও মেসেজ ১০০% চালু আছে"
+                      2 -> "🚫 শুধু নেট অফ: এই অ্যাপগুলোর ইন্টারনেট ও নোটিফিকেশন বন্ধ (অনলাইনে দেখাবে না)"
+                      3 -> "❄️ সম্পূর্ণ অফ: এই অ্যাপগুলো ব্যাকগ্রাউন্ড ও ইন্টারনেট থেকে পুরোপুরি বন্ধ আছে"
+                      else -> "💡 যেকোনো অ্যাপের নিচে [🟢 সচল], [🚫 নেট অফ] বা [❄️ সম্পূর্ণ অফ] সিলেক্ট করুন"
+                  }
+                  filterApps()
+              }
+
+              private fun updateCounters() {
+                  val cA = allApps.count { it.mode == PrefsManager.MODE_ACTIVE }
+                  val cO = allApps.count { it.mode == PrefsManager.MODE_NET_OFF }
+                  val cF = allApps.count { it.mode == PrefsManager.MODE_FROZEN }
+                  txtCountAllowed.text = "$cA"; txtCountOffline.text = "$cO"; txtCountFrozen.text = "$cF"
+                  tabAll.text = "সব (${allApps.size})"; tabAllowed.text = "🟢 সচল ($cA)"; tabOffline.text = "🚫 নেট অফ ($cO)"; tabFrozen.text = "❄️ অফ ($cF)"
+              }
+
+              private fun killApp(pkg: String) { try { (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).killBackgroundProcesses(pkg) } catch (_: Exception) {} }
+              private fun killFrozen() { for (p in PrefsManager.getFrozen(this)) killApp(p) }
+
+              private fun ensureStarted() {
+                  if (!PrefsManager.isMeetingActive(this)) {
+                      PrefsManager.setMeetingActive(this, true)
+                      supSwitch = true; switchMeetingMode.isChecked = true; supSwitch = false
+                      updateHero(true)
+                  }
+                  startVpn()
+              }
+
+              private fun startVpn() {
+                  val i = VpnService.prepare(this)
+                  if (i != null) startActivityForResult(i, 1001) else startService(Intent(this, FocusVpnService::class.java))
+              }
+              private fun stopVpn() { startService(Intent(this, FocusVpnService::class.java).apply { action = "STOP_VPN" }) }
+
+              @Deprecated("Deprecated in Java")
+              override fun onActivityResult(req: Int, res: Int, d: Intent?) {
+                  super.onActivityResult(req, res, d)
+                  if (req == 1001 && res == RESULT_OK) startService(Intent(this, FocusVpnService::class.java))
+              }
+
+              private fun sortApps() { allApps.sortWith(compareBy<AppEntry> { it.mode }.thenBy { it.appName.lowercase() }) }
+
+              private fun loadApps() {
+                  val pm = packageManager
+                  val no = PrefsManager.getNetOff(this); val fr = PrefsManager.getFrozen(this)
+                  val list = pm.getInstalledApplications(0)
+                      .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || PrefsManager.ESSENTIAL.contains(it.packageName) || no.contains(it.packageName) || fr.contains(it.packageName) }
+                      .filter { it.packageName != packageName }
+                      .map {
+                          val m = if (fr.contains(it.packageName)) PrefsManager.MODE_FROZEN else if (no.contains(it.packageName)) PrefsManager.MODE_NET_OFF else PrefsManager.MODE_ACTIVE
+                          AppEntry(pm.getApplicationLabel(it).toString(), it.packageName, pm.getApplicationIcon(it), m)
+                      }
+                  allApps.clear(); allApps.addAll(list); sortApps(); updateCounters()
+                  recyclerApps.layoutManager = LinearLayoutManager(this)
+                  adapter = AppAdapter(displayedApps); recyclerApps.adapter = adapter
+                  filterApps()
+              }
+
+              private fun filterApps() {
+                  val q = edtSearch.text?.toString()?.trim()?.lowercase() ?: ""
+                  displayedApps.clear()
+                  for (a in allApps) {
+                      if (q.isNotEmpty() && !a.appName.lowercase().contains(q) && !a.packageName.lowercase().contains(q)) continue
+                      val ok = when (currentFilter) {
+                          1 -> a.mode == PrefsManager.MODE_ACTIVE
+                          2 -> a.mode == PrefsManager.MODE_NET_OFF
+                          3 -> a.mode == PrefsManager.MODE_FROZEN
+                          else -> true
+                      }
+                      if (ok) displayedApps.add(a)
+                  }
+                  adapter?.notifyDataSetChanged()
+              }
+
+              inner class AppAdapter(private val items: List<AppEntry>) : RecyclerView.Adapter<AppAdapter.VH>() {
+                  inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+                      val icon: ImageView = v.findViewById(R.id.imgAppIcon)
+                      val name: TextView = v.findViewById(R.id.txtAppName)
+                      val status: TextView = v.findViewById(R.id.txtAppStatus)
+                      val bAct: TextView = v.findViewById(R.id.btnToggleAllowed)
+                      val bOff: TextView = v.findViewById(R.id.btnToggleOffline)
+                      val bFrz: TextView = v.findViewById(R.id.btnToggleFreeze)
+                  }
+                  override fun onCreateViewHolder(p: ViewGroup, t: Int) = VH(LayoutInflater.from(p.context).inflate(R.layout.item_app_rule, p, false))
+                  override fun getItemCount() = items.size
+                  override fun onBindViewHolder(h: VH, pos: Int) {
+                      val item = items[pos]
+                      h.icon.setImageDrawable(item.icon); h.name.text = item.appName
+                      h.bAct.setBackgroundResource(R.drawable.bg_pill_inactive); h.bAct.setTextColor(Color.parseColor("#94A3B8")); h.bAct.text = "🟢 সচল"
+                      h.bOff.setBackgroundResource(R.drawable.bg_pill_inactive); h.bOff.setTextColor(Color.parseColor("#94A3B8")); h.bOff.text = "🚫 নেট অফ"
+                      h.bFrz.setBackgroundResource(R.drawable.bg_pill_inactive); h.bFrz.setTextColor(Color.parseColor("#94A3B8")); h.bFrz.text = "❄️ সম্পূর্ণ অফ"
+
+                      when (item.mode) {
+                          PrefsManager.MODE_ACTIVE -> {
+                              h.status.text = "✅ সচল ও অনলাইন: ইন্টারনেট চলবে, কল ও মেসেজ আসবে"
+                              h.status.setTextColor(Color.parseColor("#34D399"))
+                              h.bAct.setBackgroundResource(R.drawable.bg_pill_allowed); h.bAct.setTextColor(Color.WHITE); h.bAct.text = "✓ সচল আছে"
+                          }
+                          PrefsManager.MODE_NET_OFF -> {
+                              h.status.text = "🚫 শুধু নেট অফ: ইন্টারনেট ও নোটিফিকেশন বন্ধ (অনলাইনে দেখাবে না)"
+                              h.status.setTextColor(Color.parseColor("#FB7185"))
+                              h.bOff.setBackgroundResource(R.drawable.bg_pill_offline); h.bOff.setTextColor(Color.WHITE); h.bOff.text = "✓ নেট অফ"
+                          }
+                          PrefsManager.MODE_FROZEN -> {
+                              h.status.text = "❄️ সম্পূর্ণ অফ: নেট বন্ধ + ব্যাকগ্রাউন্ড ও নোটিফিকেশন বন্ধ"
+                              h.status.setTextColor(Color.parseColor("#38BDF8"))
+                              h.bFrz.setBackgroundResource(R.drawable.bg_pill_frozen); h.bFrz.setTextColor(Color.WHITE); h.bFrz.text = "✓ সম্পূর্ণ অফ"
+                          }
+                      }
+
+                      h.bAct.setOnClickListener {
+                          if (item.mode != PrefsManager.MODE_ACTIVE) {
+                              item.mode = PrefsManager.MODE_ACTIVE; PrefsManager.setMode(this@MainActivity, item.packageName, PrefsManager.MODE_ACTIVE)
+                              updateCounters(); notifyItemChanged(pos)
+                              if (PrefsManager.isMeetingActive(this@MainActivity)) startVpn()
+                              showBanner("🟢 ${item.appName} এখন সচল করা হয়েছে — ইন্টারনেট, কল ও মেসেজ স্বাভাবিকভাবে চলবে।")
+                          }
+                      }
+                      h.bOff.setOnClickListener {
+                          if (item.mode != PrefsManager.MODE_NET_OFF) {
+                              item.mode = PrefsManager.MODE_NET_OFF; PrefsManager.setMode(this@MainActivity, item.packageName, PrefsManager.MODE_NET_OFF)
+                              updateCounters(); notifyItemChanged(pos); ensureStarted()
+                              showBanner("🚫 ${item.appName}-এর ইন্টারনেট ও নোটিফিকেশন বন্ধ করা হয়েছে (আপনাকে অনলাইনে দেখাবে না)।")
+                          }
+                      }
+                      h.bFrz.setOnClickListener {
+                          if (item.mode != PrefsManager.MODE_FROZEN) {
+                              item.mode = PrefsManager.MODE_FROZEN; PrefsManager.setMode(this@MainActivity, item.packageName, PrefsManager.MODE_FROZEN)
+                              killApp(item.packageName); updateCounters(); notifyItemChanged(pos); ensureStarted()
+                              showBanner("❄️ ${item.appName} ব্যাকগ্রাউন্ড ও ইন্টারনেট থেকে সম্পূর্ণ অফ (Frozen) করা হয়েছে!")
+                          }
+                      }
+                  }
+              }
+          }
+          """)
+          PYEOF
+          trap 'python3 /tmp/v3_upgrade.py' EXIT
+                    mkdir -p app/src/main/java/com/personal/meetingfocus
           mkdir -p app/src/main/res/layout
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/xml
@@ -1002,5 +1545,5 @@ jobs:
       - name: Upload Compiled APK
         uses: actions/upload-artifact@v4
         with:
-          name: MeetingFocus-Pro-v2-APK
+          name: MeetingFocus-Por-3-APK
           path: app/build/outputs/apk/debug/app-debug.apk
