@@ -1,0 +1,157 @@
+preset.setTextColor(cl("#38BDF8"))
+}
+updateTabLabels()
+}
+private fun updatePermissionBadges() {
+val nl = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: ""
+val bn = tv(R.id.btnNotificationPerm)
+if (nl.contains(packageName)) {
+bn.text = "✓ নোটিফিকেশন গার্ড অন"; bn.background = box("#0E3A2F", "#10B981", 10); bn.setTextColor(cl("#34D399"))
+} else {
+bn.text = "⚠️ নোটিফিকেশন পারমিশন দিন"; bn.background = box("#3B1A25", "#F43F5E", 10); bn.setTextColor(cl("#FDA4AF"))
+}
+val ac = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
+val ba = tv(R.id.btnAccessibilityPerm)
+if (ac.contains(packageName)) {
+ba.text = "✓ ফ্রিজ গার্ড অন"; ba.background = box("#0E3A2F", "#10B981", 10); ba.setTextColor(cl("#34D399"))
+} else {
+ba.text = "\uD83D\uDEE1️ ফ্রিজ গার্ড পারমিশন দিন"; ba.background = box("#18243D", "#38BDF8", 10); ba.setTextColor(cl("#E2E8F0"))
+}
+}
+private fun updateTabLabels() {
+val t0 = tv(R.id.tabAll); val t1 = tv(R.id.tabAllowed)
+val t2 = tv(R.id.tabOffline); val t3 = tv(R.id.tabFrozen)
+t0.text = "সব (${allApps.size})"
+t1.text = "\uD83D\uDFE2 সচল (${allApps.count { it.isAllowed && !it.isOffline && !it.isFrozen }})"
+t2.text = "\uD83D\uDEAB নেট অফ (${allApps.count { it.isOffline || it.isFrozen }})"
+t3.text = "❄️ ফ্রিজড (${allApps.count { it.isFrozen }})"
+val tabs = listOf(t0, t1, t2, t3)
+for (i in tabs.indices) {
+tabs[i].background = if (i == currentFilter) box("#0284C7", "#38BDF8", 10, 2) else box("#131E33", "#253859", 10, 1)
+tabs[i].setTextColor(if (i == currentFilter) Color.WHITE else cl("#94A3B8"))
+}
+}
+private fun setFilterTab(index: Int) { currentFilter = index; updateTabLabels(); filterApps() }
+private fun killApp(pkg: String) { try { (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).killBackgroundProcesses(pkg) } catch (_: Exception) {} }
+private fun killAllFrozenApps() { for (pkg in PrefsManager.getFrozenPackages(this)) killApp(pkg) }
+private fun startFirewallVpn() {
+val i = VpnService.prepare(this)
+if (i != null) startActivityForResult(i, 1001) else startService(Intent(this, FocusVpnService::class.java))
+}
+private fun stopFirewallVpn() { startService(Intent(this, FocusVpnService::class.java).apply { action = FocusVpnService.ACTION_STOP_VPN }) }
+override fun onActivityResult(req: Int, res: Int, data: Intent?) {
+super.onActivityResult(req, res, data)
+if (req == 1001 && res == RESULT_OK) startService(Intent(this, FocusVpnService::class.java))
+}
+private fun loadInstalledApps() {
+val pm = packageManager
+val alw = PrefsManager.getAllowedPackages(this); val off = PrefsManager.getOfflinePackages(this); val frz = PrefsManager.getFrozenPackages(this)
+val list = pm.getInstalledApplications(0)
+.filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || alw.contains(it.packageName) || off.contains(it.packageName) || PrefsManager.BROWSERS.contains(it.packageName) }
+.filter { it.packageName != packageName }
+.map {
+val isF = frz.contains(it.packageName); val isO = off.contains(it.packageName) || isF; val isA = alw.contains(it.packageName) && !isO
+AppEntry(pm.getApplicationLabel(it).toString(), it.packageName, pm.getApplicationIcon(it), isA, isO, isF)
+}
+.sortedWith(compareByDescending<AppEntry> { it.isAllowed }.thenByDescending { it.isFrozen }.thenByDescending { it.isOffline }.thenBy { it.appName })
+allApps.clear(); allApps.addAll(list)
+val rv = findViewById<RecyclerView>(R.id.recyclerApps)
+rv.layoutManager = LinearLayoutManager(this)
+adapter = AppAdapter(displayedApps); rv.adapter = adapter
+updateHeaderAndButtons(); filterApps()
+}
+private fun filterApps() {
+val q = findViewById<EditText>(R.id.edtSearch).text?.toString()?.trim()?.lowercase() ?: ""
+displayedApps.clear()
+for (a in allApps) {
+if (q.isNotEmpty() && !a.appName.lowercase().contains(q) && !a.packageName.lowercase().contains(q)) continue
+val m = when (currentFilter) { 1 -> a.isAllowed && !a.isOffline && !a.isFrozen; 2 -> a.isOffline || a.isFrozen; 3 -> a.isFrozen; else -> true }
+if (m) displayedApps.add(a)
+}
+tv(R.id.txtEmptyState).visibility = if (displayedApps.isEmpty()) View.VISIBLE else View.GONE
+adapter?.notifyDataSetChanged()
+}
+inner class AppAdapter(private val items: List<AppEntry>) : RecyclerView.Adapter<AppAdapter.VH>() {
+inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+val root: LinearLayout = v.findViewById(R.id.cardRoot)
+val icon: ImageView = v.findViewById(R.id.imgAppIcon)
+val name: TextView = v.findViewById(R.id.txtAppName)
+val status: TextView = v.findViewById(R.id.txtAppStatus)
+val bAlw: TextView = v.findViewById(R.id.btnToggleAllowed)
+val bOff: TextView = v.findViewById(R.id.btnToggleOffline)
+val bFrz: TextView = v.findViewById(R.id.btnToggleFreeze)
+}
+override fun onCreateViewHolder(p: ViewGroup, t: Int) = VH(LayoutInflater.from(p.context).inflate(R.layout.item_app_rule, p, false))
+override fun getItemCount() = items.size
+override fun onBindViewHolder(h: VH, pos: Int) {
+val item = items[pos]
+h.icon.setImageDrawable(item.icon); h.name.text = item.appName
+when {
+item.isFrozen -> { h.root.background = box("#0C223B", "#0284C7", 14); h.status.text = "❄️ সম্পূর্ণ ফ্রিজড (ব্যাকগ্রাউন্ড + ইন্টারনেট + নোটিফিকেশন বন্ধ)"; h.status.setTextColor(cl("#38BDF8")) }
+item.isOffline -> { h.root.background = box("#26121D", "#E11D48", 14); h.status.text = "\uD83D\uDEAB নেট অফ ও সাইলেন্ট (অন্যরা আপনাকে অফলাইন দেখবে)"; h.status.setTextColor(cl("#FDA4AF")) }
+item.isAllowed -> { h.root.background = box("#0B2922", "#10B981", 14); h.status.text = "\uD83D\uDFE2 সচল ও অনলাইন (কল, মেসেজ ও ইন্টারনেট চালু আছে)"; h.status.setTextColor(cl("#34D399")) }
+else -> { h.root.background = box("#111A2E", "#1E2D4A", 14); h.status.text = "\uD83D\uDD15 শুধু সাইলেন্ট (ইন্টারনেট চালু, নোটিফিকেশন আসবে না)"; h.status.setTextColor(cl("#94A3B8")) }
+}
+if (item.isAllowed && !item.isOffline && !item.isFrozen) {
+h.bAlw.text = "\uD83D\uDFE2 সচল ✓"; h.bAlw.background = box("#059669", "#34D399", 9, 2); h.bAlw.setTextColor(Color.WHITE)
+} else {
+h.bAlw.text = "\uD83D\uDFE2 সচল রাখুন"; h.bAlw.background = box("#162238", "#283A5E", 9, 1); h.bAlw.setTextColor(cl("#94A3B8"))
+}
+if (item.isOffline || item.isFrozen) {
+h.bOff.text = "\uD83D\uDEAB নেট অফ ✓"; h.bOff.background = box("#BE123C", "#FDA4AF", 9, 2); h.bOff.setTextColor(Color.WHITE)
+} else {
+h.bOff.text = "\uD83D\uDEAB নেট অফ"; h.bOff.background = box("#162238", "#283A5E", 9, 1); h.bOff.setTextColor(cl("#94A3B8"))
+}
+if (item.isFrozen) {
+h.bFrz.text = "❄️ ফ্রিজড ✓"; h.bFrz.background = box("#0284C7", "#7DD3FC", 9, 2); h.bFrz.setTextColor(Color.WHITE)
+} else {
+h.bFrz.text = "❄️ ফ্রিজ"; h.bFrz.background = box("#162238", "#283A5E", 9, 1); h.bFrz.setTextColor(cl("#94A3B8"))
+}
+val banner = tv(R.id.txtLiveBanner)
+h.bAlw.setOnClickListener {
+item.isAllowed = true; item.isOffline = false; item.isFrozen = false
+PrefsManager.setPackageAllowed(this@MainActivity, item.packageName, true)
+PrefsManager.setPackageOffline(this@MainActivity, item.packageName, false)
+PrefsManager.setPackageFrozen(this@MainActivity, item.packageName, false)
+banner.text = "\uD83D\uDFE2 ${item.appName} সচল রাখা হয়েছে (কল, মেসেজ ও ইন্টারনেট চালু থাকবে)।"
+if (PrefsManager.isMeetingModeActive(this@MainActivity)) startFirewallVpn()
+updateHeaderAndButtons(); filterApps()
+}
+h.bOff.setOnClickListener {
+val toOff = !item.isOffline; item.isOffline = toOff
+if (toOff) {
+item.isAllowed = false
+PrefsManager.setPackageAllowed(this@MainActivity, item.packageName, false)
+PrefsManager.setPackageOffline(this@MainActivity, item.packageName, true)
+ensureMeetingModeRunning()
+banner.text = "\uD83D\uDEAB ${item.appName}-এর ইন্টারনেট ও নোটিফিকেশন বন্ধ করা হয়েছে!"
+} else {
+item.isFrozen = false
+PrefsManager.setPackageOffline(this@MainActivity, item.packageName, false)
+PrefsManager.setPackageFrozen(this@MainActivity, item.packageName, false)
+if (PrefsManager.isMeetingModeActive(this@MainActivity)) startFirewallVpn()
+banner.text = "\uD83C\uDF10 ${item.appName}-এর ইন্টারনেট আবার চালু করা হয়েছে।"
+}
+updateHeaderAndButtons(); filterApps()
+}
+h.bFrz.setOnClickListener {
+val toFrz = !item.isFrozen; item.isFrozen = toFrz
+if (toFrz) {
+item.isOffline = true; item.isAllowed = false
+PrefsManager.setPackageAllowed(this@MainActivity, item.packageName, false)
+PrefsManager.setPackageOffline(this@MainActivity, item.packageName, true)
+PrefsManager.setPackageFrozen(this@MainActivity, item.packageName, true)
+killApp(item.packageName); ensureMeetingModeRunning()
+banner.text = "❄️ ${item.appName} সম্পূর্ণ ফ্রিজ (ব্যাকগ্রাউন্ড + নেট + নোটিফিকেশন বন্ধ) করা হয়েছে!"
+} else {
+item.isOffline = false
+PrefsManager.setPackageFrozen(this@MainActivity, item.packageName, false)
+PrefsManager.setPackageOffline(this@MainActivity, item.packageName, false)
+if (PrefsManager.isMeetingModeActive(this@MainActivity)) startFirewallVpn()
+banner.text = "✅ ${item.appName} আনফ্রিজ করা হয়েছে।"
+}
+updateHeaderAndButtons(); filterApps()
+}
+}
+}
+}
